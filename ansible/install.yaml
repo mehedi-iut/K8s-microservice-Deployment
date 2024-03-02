@@ -1,0 +1,120 @@
+# # # First install python on all nodes as ansible needs this
+# # - hosts: all
+# #   become: true
+# #   gather_facts: false
+# #   pre_tasks:
+# #   - name: Install python2 for Ansible
+# #     raw: bash -c "test -e /usr/bin/python || (apt -qqy update && apt install -qqy python-minimal)"
+# #     register: output
+# #     changed_when: output.stdout != ""
+
+# - hosts: master
+#   remote_user: ubuntu
+#   become: yes
+#   become_method: sudo
+#   tasks:
+#     - set_fact:
+#         master_ip: hostvars[groups['master']]['ansible_default_ipv4']['address']
+#     - name: Install k3s master
+#       shell: "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--tls-san {{ master_ip }} --write-kubeconfig=/home/ubuntu/.kube/config --write-kubeconfig-mode=644' sh -"
+
+
+# # Retrieve the server token and place it in admin's home (/home/admin)
+# - hosts: master
+#   remote_user: ubuntu
+#   become: yes
+#   become_method: sudo
+#   tasks:
+#     - name: fetch the server token
+#       fetch:
+#         src: /var/lib/rancher/k3s/server/node-token
+#         dest: "/home/ubuntu/node-token"
+#         flat: yes
+#       when: inventory_hostname in groups.master
+#       run_once: yes
+
+#     - name: Ensure .kube directory exists
+#       file:
+#         path: "/home/ubuntu/.kube"
+#         state: directory
+#       become: yes
+#       become_user: ubuntu
+#       when: inventory_hostname in groups.master
+#       run_once: yes
+
+#     - name: fetch the kubectl config
+#       fetch:
+#         src: /home/ubuntu/.kube/config
+#         dest: "/home/ubuntu/.kube/config"
+#         flat: yes
+#       when: inventory_hostname in groups.master
+#       run_once: yes
+
+ 
+# - hosts: worker
+#   remote_user: ubuntu
+#   tasks:
+#     - set_fact:
+#         k3s_url: "https://{{ hostvars[groups['master'][0]]['ansible_default_ipv4']['address'] }}:6443"
+#         k3s_token: "{{ lookup('file','/home/ubuntu/node-token') }}"
+#       run_once: true
+
+#     - name: install k3s on nodes
+#       shell: "curl -sfL https://get.k3s.io | K3S_URL={{ k3s_url }} K3S_TOKEN={{ k3s_token }} sh -"
+
+
+- hosts: master
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: set master_ip fact
+      set_fact:
+        master_ip: "{{ hostvars[groups['master'][0]]['ansible_default_ipv4']['address'] }}"
+
+    - name: Install k3s master
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--tls-san {{ master_ip }} --write-kubeconfig=/home/ubuntu/.kube/config --write-kubeconfig-mode=644' sh -
+
+    - name: fetch the server token
+      fetch:
+        src: /var/lib/rancher/k3s/server/node-token
+        dest: "/home/ubuntu/node-token"
+        flat: yes
+      when: inventory_hostname in groups.master
+      run_once: yes
+
+    - name: Ensure .kube directory exists
+      file:
+        path: "/home/ubuntu/.kube"
+        state: directory
+      become: yes
+      become_user: ubuntu
+      run_once: yes
+
+    - name: fetch the kubectl config
+      fetch:
+        src: /home/ubuntu/.kube/config
+        dest: "/home/ubuntu/.kube/config"
+        flat: yes
+      when: inventory_hostname in groups.master
+      run_once: yes
+
+    - name: Set master IP in kubeconfig
+      replace:
+        path: "/home/ubuntu/.kube/config"
+        regexp: '^ *server:.*'
+        replace: '    server: https://{{ master_ip }}:6443'
+      become: yes
+      run_once: yes
+
+- hosts: worker
+  remote_user: ubuntu
+  tasks:
+    - set_fact:
+        k3s_url: "https://{{ hostvars[groups['master'][0]]['ansible_default_ipv4']['address'] }}:6443"
+        k3s_token: "{{ lookup('file','/home/ubuntu/node-token') }}"
+      run_once: true
+
+    - name: install k3s on nodes
+      shell: "curl -sfL https://get.k3s.io | K3S_URL={{ k3s_url }} K3S_TOKEN={{ k3s_token }} sh -"

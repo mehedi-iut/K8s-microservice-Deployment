@@ -1,21 +1,21 @@
-terraform {
-  backend "s3" {
-    # Replace this with your bucket name!
-    bucket         = "poridhi-briefly-curiously-rightly-greatly-infinite-lion"
-    key            = "terraform.tfstate"
-    region         = "us-east-1"
+# terraform {
+#   backend "s3" {
+#     # Replace this with your bucket name!
+#     bucket         = "poridhi-briefly-curiously-rightly-greatly-infinite-lion"
+#     key            = "terraform.tfstate"
+#     region         = "us-east-1"
 
-    # # Replace this with your DynamoDB table name!
-    # dynamodb_table = "terraform-up-and-running-locks"
-    # encrypt        = true
-  }
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
+#     # # Replace this with your DynamoDB table name!
+#     # dynamodb_table = "terraform-up-and-running-locks"
+#     # encrypt        = true
+#   }
+#   required_providers {
+#     aws = {
+#       source  = "hashicorp/aws"
+#       version = "~> 5.0"
+#     }
+#   }
+# }
 
 
 # terraform {
@@ -29,6 +29,14 @@ terraform {
 # }
 
 # Configure the AWS Provider
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">=5.0, !=5.39"
+    }
+  }
+}
 provider "aws" {
   region = "us-east-1"
 }
@@ -48,4 +56,6 @@ module "dev_infra" {
   gw_cidr               = "0.0.0.0/0"
   gw_tags               = "poridhi"
   ami                   = "ami-0c7217cdde317cfec"
+  public_vm_tags        = ["lb", "bastion"]
+  private_vm_tags       = ["master", "worker-1", "worker-2"]
 }

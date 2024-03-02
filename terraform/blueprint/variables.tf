@@ -48,3 +48,12 @@ variable "gw_cidr" {
   description = "gateway cidr block"
 }
 
+variable "public_vm_tags" {
+  type = list(string)
+  description = "tag value of public vm"
+}
+
+variable "private_vm_tags"{
+  type = list(string)
+  description = "tag value of private vm"
+}

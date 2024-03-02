@@ -41,6 +41,8 @@ module "ec2" {
   instance_type_public  = var.instance_type_public
   instance_type_private = var.instance_type_private
   ami                   = var.ami
+  public_vm_tags        = var.public_vm_tags
+  private_vm_tags       = var.private_vm_tags
 }
 
 

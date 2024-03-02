@@ -8,16 +8,17 @@ resource "aws_key_pair" "example" {
   public_key = tls_private_key.example.public_key_openssh
 }
 
-# resource "local_file" "k3s-key" {
-#   content  = tls_private_key.example.private_key_pem
-#   filename = "k3s-key.pem"
-# }
-
-resource "aws_s3_object" "object" {
-  bucket = "poridhi-briefly-curiously-rightly-greatly-infinite-lion"
-  key    = "k3s-key.pem"
-  content = tls_private_key.example.private_key_pem
+resource "local_file" "k3s-key" {
+  content  = tls_private_key.example.private_key_pem
+  filename = "k3s-key.pem"
+  file_permission = "0400"
 }
+
+# resource "aws_s3_object" "object" {
+#   bucket = "poridhi-briefly-curiously-rightly-greatly-infinite-lion"
+#   key    = "k3s-key.pem"
+#   content = tls_private_key.example.private_key_pem
+# }
 
 resource "aws_instance" "public" {
   ami           = var.ami
@@ -28,9 +29,76 @@ resource "aws_instance" "public" {
   security_groups = [
     var.security_group_id,
   ]
-  # depends_on = [aws_key_pair.example, tls_private_key.example, local_file.k3s-key]
-  depends_on = [aws_key_pair.example, tls_private_key.example, aws_s3_object.object]
+  tags = {
+    Name = "${var.public_vm_tags[count.index]}"
+  }
+  provisioner "file" {
+    source      = "../../env/dev/k3s-key.pem"
+    destination = "/home/ubuntu/k3s-key.pem"
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      # private_key = file("../../env/dev/k3s-key.pem")
+      private_key = tls_private_key.example.private_key_pem
+      host        = self.public_ip
+      # host        = aws_instance.public.*.public_ip[index(aws_instance.public.*.tags.Name, "bastion")]
+    }
+  }
+
+
+  depends_on = [aws_key_pair.example, tls_private_key.example, local_file.k3s-key]
+  # depends_on = [aws_key_pair.example, tls_private_key.example, aws_s3_object.object]
 }
+
+# data "aws_instance" "public"{
+#   # instance_id = aws_instance.public[count.index].id
+#   # filter {
+#   #   name   = "tag:Name"
+#   #   values = ["bastion"]
+#   # }
+# }
+
+
+# resource "null_resource" "setup_bastion" {
+#   depends_on = [aws_instance.public, data.aws_instance.public]
+#   # depends_on = [aws_instance.public]
+
+#   connection {
+#     host = data.aws_instance.public.public_ip
+#     type = "ssh"
+#     user = "ubuntu"
+#     private_key = tls_private_key.example.private_key_pem
+#   }
+
+#   provisioner "remote-exec" {
+#     inline = [
+#       "sudo apt-get update -y",
+#       "sudo apt-get install software-properties-common -y",
+#       "sudo apt-add-repository --yes --update ppa:ansible/ansible",
+#       "sudo apt-get install ansible -y"
+#     ]
+#   }
+
+#   # provisioner "file" {
+#   #   source      = tls_private_key.example.private_key_pem
+#   #   destination = "~/.ssh/authorized_keys"
+#   # }
+# }
+
+# resource "null_resource" "bastion_upload" {
+#   provisioner "file" {
+#     source      = "../../env/dev/k3s-key.pem"
+#     destination = "/home/ubuntu/k3s-key.pem"
+
+#     connection {
+#       type        = "ssh"
+#       user        = "ubuntu"
+#       private_key = file("../../env/dev/k3s-key.pem")
+#       host        = aws_instance.public.*.public_ip[index(aws_instance.public.*.tags.Name, "bastion")]
+#     }
+#   }
+# }
 
 resource "aws_eip" "public" {
   count  = var.number_of_public_vm
@@ -52,9 +120,94 @@ resource "aws_instance" "private" {
   security_groups = [
     var.security_group_id,
   ]
-  # depends_on = [aws_key_pair.example, tls_private_key.example, local_file.k3s-key]
-  depends_on = [aws_key_pair.example, tls_private_key.example, aws_s3_object.object]
+  tags = {
+    Name = "${var.private_vm_tags[count.index]}"
+  }
+  depends_on = [aws_key_pair.example, tls_private_key.example, local_file.k3s-key]
+  # depends_on = [aws_key_pair.example, tls_private_key.example, aws_s3_object.object]
 }
+
+# data "aws_instances" "master" {
+#   filter {
+#     name   = "tag:Name"
+#     values = ["master"]
+#   }
+# }
+
+# data "aws_instances" "workers" {
+#   filter {
+#     name   = "tag:Name"
+#     values = ["worker-1", "worker-2"]
+#   } 
+# }
+
+# locals {
+#   master_ip    = data.aws_instances.master.private_ips[0]
+#   worker_ips   = data.aws_instances.workers.private_ips
+# }
+
+# resource "null_resource" "install_master" {
+#   connection {
+#     host        = local.master_ip
+#     # ...
+#   }
+
+#   provisioner "remote-exec" {
+#     inline = [ 
+#       "curl -sfL https://get.k3s.io | sh -s - server --tls-san ${local.master_ip}"
+#     ]
+#   }
+# }
+
+# resource "null_resource" "copy_token" {
+#   depends_on = [null_resource.install_master]
+
+#   connection {
+#     host        = aws_instance.bastion.public_ip
+#     type        = "ssh"
+#     user        = "ubuntu"
+#     private_key = file("~/k3s-key.pem")
+
+#     bastion_host = aws_instance.bastion.public_ip
+#     bastion_user = "ubuntu"  
+
+#   }
+
+#   provisioner "file" {
+#     source      = "/var/lib/k3s/server/node-token"
+#     destination = "/tmp/token"
+#   }
+# }
+
+
+# data "local_file" "token" {
+#   depends_on = [null_resource.copy_token]
+
+#   filename = "/path/to/bastion/token"
+# }
+
+# resource "null_resource" "join_workers" {
+#   count = length(local.worker_ips)
+
+#   connection {
+#     host = local.worker_ips[count.index]
+#     # ... 
+#   }
+
+#   provisioner "remote-exec" {
+#     inline = [
+#       "curl -sfL https://get.k3s.io | K3S_URL=https://${local.master_ip}:6443 K3S_TOKEN=${data.local_file.token.content} sh -"
+#     ]
+#   }
+# }
+
+# resource "null_resource" "run_local_exec" {
+#   count = length(aws_instance.public)
+
+#   provisioner "local-exec" {
+#     command = aws_instance.public[count.index].tags.Name == "bastion" ? "ssh-agent bash -c 'ssh-add ../../env/dev/k3s-key.pem" : "echo 'Not a bastion host'"
+#   }
+# }
 
 ## Provisioning k3s master node
 #resource "null_resource" "k3s_master" {
